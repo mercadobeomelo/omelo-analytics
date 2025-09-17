@@ -6,7 +6,6 @@ import {
   MessageSquare,
   Users,
   Search,
-  RefreshCw,
   Phone,
   Activity,
   Heart,

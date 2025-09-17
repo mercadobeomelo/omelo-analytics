@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { Pool } from 'pg';
 
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL?.includes('localhost') ? false : { rejectUnauthorized: false }
+  connectionString: 'postgresql://postgres:rBoBOJUTHhsXTHylCOvlnSsfJRxvrBgS@tramway.proxy.rlwy.net:26530/railway',
+  ssl: { rejectUnauthorized: false }
 });
 
 export async function GET(request: NextRequest) {
