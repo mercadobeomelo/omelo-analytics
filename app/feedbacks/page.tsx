@@ -23,6 +23,7 @@ export default function FeedbacksPage() {
   const [error, setError] = useState<string | null>(null)
   const [sortBy, setSortBy] = useState<"newest" | "oldest">("newest")
   const [selectedType, setSelectedType] = useState<string>("all")
+  const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     const fetchFeedbacks = async () => {
@@ -81,6 +82,22 @@ export default function FeedbacksPage() {
       minute: "2-digit",
     })
   }
+
+  const toggleExpanded = (feedbackId: string) => {
+    setExpandedCards(prev => {
+      const newSet = new Set(prev)
+      if (newSet.has(feedbackId)) {
+        newSet.delete(feedbackId)
+      } else {
+        newSet.add(feedbackId)
+      }
+      return newSet
+    })
+  }
+
+  const isExpanded = (feedbackId: string) => expandedCards.has(feedbackId)
+
+  const shouldShowToggle = (content: string) => content.length > 150
 
   if (loading) {
     return (
@@ -263,7 +280,19 @@ export default function FeedbacksPage() {
               </div>
 
               <div className="mb-4">
-                <p className="text-foreground text-sm leading-relaxed line-clamp-4 text-pretty">{feedback.content}</p>
+                <p className="text-foreground text-sm leading-relaxed text-pretty">
+                  {isExpanded(feedback.id) || !shouldShowToggle(feedback.content)
+                    ? feedback.content
+                    : `${feedback.content.slice(0, 150)}...`}
+                </p>
+                {shouldShowToggle(feedback.content) && (
+                  <button
+                    onClick={() => toggleExpanded(feedback.id)}
+                    className="text-secondary hover:text-secondary/80 text-xs font-medium mt-2 transition-colors duration-200"
+                  >
+                    {isExpanded(feedback.id) ? "Show less" : "Show more"}
+                  </button>
+                )}
               </div>
 
               <div className="flex items-center justify-between pt-4 border-t border-border">
