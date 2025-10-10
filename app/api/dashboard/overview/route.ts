@@ -33,7 +33,11 @@ export async function GET() {
 
       // Get message stats including petdetails
       // Simplified fast queries
-      const totalMessagesResult = await client.query(`SELECT COUNT(*) as total_messages FROM message_analytics_raw`);
+      const totalMessagesResult = await client.query(`
+        SELECT 
+          (SELECT COUNT(*) FROM message_analytics_raw) + 
+          (SELECT COUNT(*) FROM whatsapp_messages) as total_messages
+      `);
       const totalPetsResult = await client.query(`SELECT COUNT(*) as total_petdetails FROM whatsapp_petdetails`);
       
       const messageStatsQuery = `
@@ -75,19 +79,19 @@ export async function GET() {
       const feedbackStatsResult = await client.query(feedbackStatsQuery, [today, weekAgo]);
       const feedbackStats = feedbackStatsResult.rows[0];
 
-      // Get peak hour
+      // Get peak hour (IST timezone, last 30 days for better accuracy)
       const peakHourQuery = `
         SELECT 
-          EXTRACT(HOUR FROM created_at) as hour,
+          EXTRACT(HOUR FROM created_at AT TIME ZONE 'Asia/Kolkata') as hour,
           COUNT(*) as message_count
         FROM whatsapp_messages
-        WHERE created_at >= $1
-        GROUP BY EXTRACT(HOUR FROM created_at)
+        WHERE created_at >= CURRENT_DATE - INTERVAL '30 days'
+        GROUP BY EXTRACT(HOUR FROM created_at AT TIME ZONE 'Asia/Kolkata')
         ORDER BY message_count DESC
         LIMIT 1
       `;
       
-      const peakHourResult = await client.query(peakHourQuery, [today]);
+      const peakHourResult = await client.query(peakHourQuery);
       const peakHour = peakHourResult.rows[0];
 
       // Calculate growth rates and additional metrics

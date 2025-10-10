@@ -40,6 +40,34 @@ interface DashboardOverview {
   last_updated: string
 }
 
+interface AnalyticsSummary {
+  dau_last_day: number
+  dau_growth: number
+  new_users_last_day: number
+  returning_users_last_day: number
+  retention_rate: number
+  period_active_users: number
+  avg_dau_period: number
+  last_day_date: string
+}
+
+interface DailyAnalytics {
+  date: string
+  dau: number
+  new_users: number
+  repeat_users: number
+  mau: number
+}
+
+interface AnalyticsData {
+  summary: AnalyticsSummary
+  daily_data: DailyAnalytics[]
+  meta: {
+    period_days: number
+    last_updated: string
+  }
+}
+
 interface ConversationThread {
   user_id: string
   user_name: string
@@ -67,6 +95,7 @@ interface ConversationThread {
 export default function DashboardPage() {
   const router = useRouter()
   const [overview, setOverview] = useState<DashboardOverview | null>(null)
+  const [analytics, setAnalytics] = useState<AnalyticsData | null>(null)
   const [threads, setThreads] = useState<ConversationThread[]>([])
   const [selectedThread, setSelectedThread] = useState<ConversationThread | null>(null)
   const [loading, setLoading] = useState(true)
@@ -78,6 +107,14 @@ export default function DashboardPage() {
   const [threadsPerPage, setThreadsPerPage] = useState(50)
   const [totalThreads, setTotalThreads] = useState(0)
   const [hasMoreThreads, setHasMoreThreads] = useState(false)
+  const [analyticsStartDate, setAnalyticsStartDate] = useState(() => {
+    const date = new Date()
+    date.setDate(date.getDate() - 30)
+    return date.toISOString().split('T')[0]
+  })
+  const [analyticsEndDate, setAnalyticsEndDate] = useState(() => {
+    return new Date().toISOString().split('T')[0]
+  })
 
   // Fetch dashboard overview
   const fetchOverview = async () => {
@@ -89,6 +126,19 @@ export default function DashboardPage() {
       }
     } catch (error) {
       console.error("Failed to fetch overview:", error)
+    }
+  }
+
+  // Fetch analytics data
+  const fetchAnalytics = async () => {
+    try {
+      const response = await fetch(`/api/dashboard/analytics?start_date=${analyticsStartDate}&end_date=${analyticsEndDate}`)
+      const data = await response.json()
+      if (data.success) {
+        setAnalytics(data.data)
+      }
+    } catch (error) {
+      console.error("Failed to fetch analytics:", error)
     }
   }
 
@@ -122,6 +172,8 @@ export default function DashboardPage() {
       setLoading(true)
       await Promise.all([fetchOverview(), fetchThreads()])
       setLoading(false)
+      // Load analytics separately after main data loads
+      fetchAnalytics()
     }
     loadData()
   }, [])
@@ -146,13 +198,21 @@ export default function DashboardPage() {
     }
   }, [searchQuery, filterBy, sortBy, currentPage, threadsPerPage])
 
-  // Auto-refresh overview every 30 seconds (reduced from 10s)
+  // Auto-refresh overview and analytics every 30 seconds 
   useEffect(() => {
     const interval = setInterval(() => {
       fetchOverview()
+      fetchAnalytics()
     }, 30000)
     return () => clearInterval(interval)
   }, [])
+  
+  // Refresh analytics when date range changes
+  useEffect(() => {
+    if (!loading) {
+      fetchAnalytics()
+    }
+  }, [analyticsStartDate, analyticsEndDate])
 
   // Manual refresh
   const handleRefresh = async () => {
@@ -223,79 +283,192 @@ export default function DashboardPage() {
       {/* Overview Metrics */}
       {overview && (
         <div className="px-6 py-6">
-
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            {/* Total Messages Ever */}
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Total Messages Ever</p>
-                  <p className="text-3xl font-bold text-gray-900">{formatNumber(overview.total_messages)}</p>
-                  <p className="text-sm text-gray-500">All time</p>
+          {/* Date Range Picker */}
+          {analytics && (
+            <div className="flex items-center justify-between mb-6">
+              <h1 className="text-2xl font-bold text-gray-900">Dashboard Analytics</h1>
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <label className="text-sm font-medium text-gray-600">From:</label>
+                  <input
+                    type="date"
+                    value={analyticsStartDate}
+                    onChange={(e) => setAnalyticsStartDate(e.target.value)}
+                    className="px-3 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
                 </div>
-                <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                  <MessageSquare className="w-6 h-6 text-blue-600" />
+                <div className="flex items-center gap-2">
+                  <label className="text-sm font-medium text-gray-600">To:</label>
+                  <input
+                    type="date"
+                    value={analyticsEndDate}
+                    onChange={(e) => setAnalyticsEndDate(e.target.value)}
+                    className="px-3 py-1 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div className="flex gap-1">
+                  <button
+                    onClick={() => {
+                      const date = new Date()
+                      date.setDate(date.getDate() - 7)
+                      setAnalyticsStartDate(date.toISOString().split('T')[0])
+                      setAnalyticsEndDate(new Date().toISOString().split('T')[0])
+                    }}
+                    className="px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded"
+                  >
+                    7D
+                  </button>
+                  <button
+                    onClick={() => {
+                      const date = new Date()
+                      date.setDate(date.getDate() - 30)
+                      setAnalyticsStartDate(date.toISOString().split('T')[0])
+                      setAnalyticsEndDate(new Date().toISOString().split('T')[0])
+                    }}
+                    className="px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded"
+                  >
+                    30D
+                  </button>
+                  <button
+                    onClick={() => {
+                      const date = new Date()
+                      date.setMonth(date.getMonth() - 1)
+                      setAnalyticsStartDate(date.toISOString().split('T')[0])
+                      setAnalyticsEndDate(new Date().toISOString().split('T')[0])
+                    }}
+                    className="px-2 py-1 text-xs bg-gray-100 hover:bg-gray-200 rounded"
+                  >
+                    1M
+                  </button>
                 </div>
               </div>
             </div>
+          )}
+
+          {/* Primary Metrics Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 mb-6">
+            {/* Total Messages */}
+            <div className="lg:col-span-2 bg-white p-5 rounded-lg border border-gray-200">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-600">Total Messages</p>
+                  <p className="text-2xl font-bold text-gray-900">{formatNumber(overview.total_messages)}</p>
+                  <div className="flex items-center gap-4 mt-1">
+                    <span className="text-sm text-gray-500">{formatNumber(overview.messages_today)} today</span>
+                    {overview.message_growth_rate !== 0 && (
+                      <span className={`text-sm font-medium ${getGrowthColor(overview.message_growth_rate)}`}>
+                        {overview.message_growth_rate > 0 ? "+" : ""}{overview.message_growth_rate}%
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <MessageSquare className="w-8 h-8 text-blue-600" />
+              </div>
+            </div>
+
             {/* Total Users */}
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+            <div className="lg:col-span-2 bg-white p-5 rounded-lg border border-gray-200">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-600">Total Users</p>
-                  <p className="text-3xl font-bold text-gray-900">{formatNumber(overview.total_users)}</p>
-                  <p className="text-sm text-gray-500">+{overview.new_users_today} today</p>
+                  <p className="text-2xl font-bold text-gray-900">{formatNumber(overview.total_users)}</p>
+                  <div className="flex items-center gap-4 mt-1">
+                    <span className="text-sm text-gray-500">+{overview.new_users_today} today</span>
+                    {overview.user_growth_rate !== 0 && (
+                      <span className={`text-sm font-medium ${getGrowthColor(overview.user_growth_rate)}`}>
+                        {overview.user_growth_rate > 0 ? "+" : ""}{overview.user_growth_rate}%
+                      </span>
+                    )}
+                  </div>
                 </div>
-                <div className="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center">
-                  <Users className="w-6 h-6 text-blue-600" />
-                </div>
+                <Users className="w-8 h-8 text-green-600" />
               </div>
-              {overview.user_growth_rate !== 0 && (
-                <div className="mt-2">
-                  <span className={`text-sm font-medium ${getGrowthColor(overview.user_growth_rate)}`}>
-                    {overview.user_growth_rate > 0 ? "+" : ""}{overview.user_growth_rate}% vs yesterday
-                  </span>
-                </div>
-              )}
             </div>
 
-            {/* Active Users */}
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+            {/* Onboarding */}
+            <div className="bg-white p-5 rounded-lg border border-gray-200">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-gray-600">Active Today</p>
-                  <p className="text-3xl font-bold text-gray-900">{formatNumber(overview.active_users_today)}</p>
-                  <p className="text-sm text-gray-500">{overview.active_now} active now</p>
+                  <p className="text-sm font-medium text-gray-600">Onboarding</p>
+                  <p className="text-xl font-bold text-gray-900">{overview.onboarding_completion_rate}%</p>
+                  <p className="text-xs text-gray-500">completion</p>
                 </div>
-                <div className="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center">
-                  <Activity className="w-6 h-6 text-green-600" />
-                </div>
+                <Activity className="w-6 h-6 text-purple-600" />
               </div>
             </div>
 
-            {/* Messages Today */}
-            <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+            {/* Peak Hour */}
+            <div className="bg-white p-5 rounded-lg border border-gray-200">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-gray-600">Messages Today</p>
-                  <p className="text-3xl font-bold text-gray-900">{formatNumber(overview.messages_today)}</p>
-                  <p className="text-sm text-gray-500">{overview.messages_per_user_today} per user</p>
+                  <p className="text-sm font-medium text-gray-600">Peak Hour (IST)</p>
+                  <p className="text-xl font-bold text-gray-900">{overview.peak_hour !== null ? `${overview.peak_hour}:00` : 'N/A'}</p>
+                  <p className="text-xs text-gray-500">{overview.peak_hour_messages} msgs (30d)</p>
                 </div>
-                <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
-                  <MessageSquare className="w-6 h-6 text-purple-600" />
-                </div>
+                <Activity className="w-6 h-6 text-orange-600" />
               </div>
-              {overview.message_growth_rate !== 0 && (
-                <div className="mt-2">
-                  <span className={`text-sm font-medium ${getGrowthColor(overview.message_growth_rate)}`}>
-                    {overview.message_growth_rate > 0 ? "+" : ""}{overview.message_growth_rate}% vs yesterday
-                  </span>
-                </div>
-              )}
             </div>
-
           </div>
+
+          {/* Analytics Grid */}
+          {analytics && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+              {/* Daily Active Users */}
+              <div className="bg-white p-5 rounded-lg border border-gray-200">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-600">Daily Active Users</p>
+                    <p className="text-2xl font-bold text-gray-900">{analytics.summary.dau_last_day}</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      <span className="text-xs text-gray-500">{new Date(analytics.summary.last_day_date).toLocaleDateString()}</span>
+                      {analytics.summary.dau_growth !== 0 && (
+                        <span className={`text-xs font-medium ${getGrowthColor(analytics.summary.dau_growth)}`}>
+                          {analytics.summary.dau_growth > 0 ? "+" : ""}{analytics.summary.dau_growth}%
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <Activity className="w-7 h-7 text-blue-600" />
+                </div>
+              </div>
+
+              {/* Period Active Users */}
+              <div className="bg-white p-5 rounded-lg border border-gray-200">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-600">Period Active</p>
+                    <p className="text-2xl font-bold text-gray-900">{analytics.summary.period_active_users}</p>
+                    <p className="text-xs text-gray-500">{analytics.meta.period_days} days</p>
+                  </div>
+                  <Users className="w-7 h-7 text-green-600" />
+                </div>
+              </div>
+
+              {/* New Users */}
+              <div className="bg-white p-5 rounded-lg border border-gray-200">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-600">New Users</p>
+                    <p className="text-2xl font-bold text-gray-900">{analytics.summary.new_users_last_day}</p>
+                    <p className="text-xs text-gray-500">last day</p>
+                  </div>
+                  <Users className="w-7 h-7 text-purple-600" />
+                </div>
+              </div>
+
+              {/* Returning Users */}
+              <div className="bg-white p-5 rounded-lg border border-gray-200">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-600">Returning Users</p>
+                    <p className="text-2xl font-bold text-gray-900">{analytics.summary.returning_users_last_day}</p>
+                    <p className="text-xs text-gray-500">last day</p>
+                  </div>
+                  <Users className="w-7 h-7 text-indigo-600" />
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Secondary Metrics */}
           {/* <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
