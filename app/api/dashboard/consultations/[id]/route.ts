@@ -4,10 +4,11 @@ import { backendPool } from "../../../../../lib/database"
 // GET single consultation
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const consultationId = params.id
+    const { id } = await params
+    const consultationId = id
     
     const query = `
       SELECT 
@@ -50,10 +51,11 @@ export async function GET(
 // POST update consultation (approve/reject/assign vet)
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const consultationId = params.id
+    const { id } = await params
+    const consultationId = id
     const body = await request.json()
     const { action, vetNotes, appointmentDate, vetName, vetContact } = body
     
