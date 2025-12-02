@@ -1,7 +1,7 @@
 "use client"
 
 import { useRouter, usePathname } from "next/navigation"
-import { Home, ThumbsUp } from "lucide-react"
+import { Home, ThumbsUp, Heart } from "lucide-react"
 
 export default function GlobalNavigation() {
   const router = useRouter()
@@ -15,6 +15,13 @@ export default function GlobalNavigation() {
       path: '/dashboard',
       color: 'blue'
     },
+    // {
+    //   id: 'consultations',
+    //   icon: Heart,
+    //   label: 'Consultations',
+    //   path: '/consultations',
+    //   color: 'red'
+    // },
     {
       id: 'feedbacks',
       icon: ThumbsUp,
@@ -36,9 +43,13 @@ export default function GlobalNavigation() {
             const buttonStyles = isActive
               ? item.color === 'blue'
                 ? 'bg-blue-500 text-white shadow-lg shadow-blue-500/25'
+                : item.color === 'red'
+                ? 'bg-red-500 text-white shadow-lg shadow-red-500/25'
                 : 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/25'
               : item.color === 'blue'
                 ? 'hover:bg-blue-50 text-gray-600 hover:text-blue-600'
+                : item.color === 'red'
+                ? 'hover:bg-red-50 text-gray-600 hover:text-red-600'
                 : 'hover:bg-emerald-50 text-gray-600 hover:text-emerald-600'
 
             return (
