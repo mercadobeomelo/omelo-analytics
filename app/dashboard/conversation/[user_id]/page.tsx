@@ -103,7 +103,17 @@ export default function ConversationPage() {
 
   const fetchConversationData = async (offset = 0, limit = 100) => {
     try {
-      const response = await fetch(`/api/dashboard/messages/${user_id}?offset=${offset}&limit=${limit}`)
+      // Pick the messages endpoint from the ?source= param the dashboard passes
+      // (client-only read avoids a useSearchParams Suspense boundary).
+      const source =
+        new URLSearchParams(window.location.search).get("source") === "mobile"
+          ? "mobile"
+          : "whatsapp"
+      const base =
+        source === "mobile"
+          ? `/api/dashboard/mobile/messages/${user_id}`
+          : `/api/dashboard/messages/${user_id}`
+      const response = await fetch(`${base}?offset=${offset}&limit=${limit}`)
       const result = await response.json()
       
       if (result.success) {

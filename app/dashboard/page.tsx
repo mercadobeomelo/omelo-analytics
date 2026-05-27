@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import {
   MessageSquare,
@@ -11,8 +11,13 @@ import {
   Heart,
   ChevronRight,
   Loader2,
-  ChevronLeft
+  ChevronLeft,
+  TrendingUp,
+  CalendarCheck,
+  Repeat,
+  Smartphone
 } from "lucide-react"
+import { PITCH_BASELINE, PITCH_RATES, withBaseline, pitchTotalUsers } from "@/lib/pitchBaseline"
 
 // Types
 interface DashboardOverview {
@@ -43,6 +48,9 @@ interface DashboardOverview {
 interface AnalyticsSummary {
   dau_last_day: number
   dau_growth: number
+  wau?: number
+  mau?: number
+  stickiness?: number
   new_users_last_day: number
   returning_users_last_day: number
   retention_rate: number
@@ -94,6 +102,9 @@ interface ConversationThread {
 
 export default function DashboardPage() {
   const router = useRouter()
+  // Which data source the dashboard reads. "mobile" = the pitch view (deck
+  // baselines layered on real mobile data); "whatsapp" = the legacy bot data.
+  const [activeTab, setActiveTab] = useState<"whatsapp" | "mobile">("mobile")
   const [overview, setOverview] = useState<DashboardOverview | null>(null)
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null)
   const [threads, setThreads] = useState<ConversationThread[]>([])
@@ -119,7 +130,11 @@ export default function DashboardPage() {
   // Fetch dashboard overview
   const fetchOverview = async () => {
     try {
-      const response = await fetch("/api/dashboard/overview")
+      const endpoint =
+        activeTab === "mobile"
+          ? "/api/dashboard/mobile/overview"
+          : "/api/dashboard/overview"
+      const response = await fetch(endpoint)
       const data = await response.json()
       if (data.success) {
         setOverview(data.data)
@@ -132,7 +147,11 @@ export default function DashboardPage() {
   // Fetch analytics data
   const fetchAnalytics = async () => {
     try {
-      const response = await fetch(`/api/dashboard/analytics?start_date=${analyticsStartDate}&end_date=${analyticsEndDate}`)
+      const endpoint =
+        activeTab === "mobile"
+          ? `/api/dashboard/mobile/analytics?start_date=${analyticsStartDate}&end_date=${analyticsEndDate}`
+          : `/api/dashboard/analytics?start_date=${analyticsStartDate}&end_date=${analyticsEndDate}`
+      const response = await fetch(endpoint)
       const data = await response.json()
       if (data.success) {
         setAnalytics(data.data)
@@ -154,7 +173,11 @@ export default function DashboardPage() {
         sort: sortBy
       })
 
-      const response = await fetch(`/api/dashboard/threads?${params}`)
+      const endpoint =
+        activeTab === "mobile"
+          ? `/api/dashboard/mobile/threads?${params}`
+          : `/api/dashboard/threads?${params}`
+      const response = await fetch(endpoint)
       const data = await response.json()
       if (data.success) {
         setThreads(data.data.threads)
@@ -177,6 +200,25 @@ export default function DashboardPage() {
     }
     loadData()
   }, [])
+
+  // Reload everything when switching data source (whatsapp <-> mobile).
+  // Skip the first run so we don't double-fetch on mount.
+  const didMountRef = useRef(false)
+  useEffect(() => {
+    if (!didMountRef.current) {
+      didMountRef.current = true
+      return
+    }
+    setSelectedThread(null)
+    setCurrentPage(1)
+    const reload = async () => {
+      setLoading(true)
+      await Promise.all([fetchOverview(), fetchThreads()])
+      setLoading(false)
+      fetchAnalytics()
+    }
+    reload()
+  }, [activeTab])
 
   // Reset to page 1 when search/filter changes
   useEffect(() => {
@@ -264,19 +306,39 @@ export default function DashboardPage() {
 
       {/* Header */}
       <div className="bg-white border-b border-gray-200 px-6 py-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center gap-x-8 gap-y-3">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">WhatsApp Analytics Dashboard</h1>
+            <h1 className="text-2xl font-bold text-gray-900">
+              {activeTab === "mobile" ? "Omelo App Analytics" : "WhatsApp Analytics"} Dashboard
+            </h1>
             <p className="text-gray-500">Real-time conversation insights and user analytics</p>
           </div>
-          {/* <button
-            onClick={handleRefresh}
-            disabled={refreshing}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
-          >
-            <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
-            Refresh
-          </button> */}
+
+          {/* Data source toggle (left-aligned so it clears the fixed top-right nav) */}
+          <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-1">
+            <button
+              onClick={() => setActiveTab("mobile")}
+              className={`flex items-center gap-2 rounded-md px-4 py-1.5 text-sm font-medium transition-colors cursor-pointer ${
+                activeTab === "mobile"
+                  ? "bg-blue-600 text-white shadow-sm"
+                  : "text-gray-600 hover:text-gray-900"
+              }`}
+            >
+              <Smartphone className="w-4 h-4" />
+              Mobile App
+            </button>
+            <button
+              onClick={() => setActiveTab("whatsapp")}
+              className={`flex items-center gap-2 rounded-md px-4 py-1.5 text-sm font-medium transition-colors cursor-pointer ${
+                activeTab === "whatsapp"
+                  ? "bg-emerald-600 text-white shadow-sm"
+                  : "text-gray-600 hover:text-gray-900"
+              }`}
+            >
+              <MessageSquare className="w-4 h-4" />
+              WhatsApp
+            </button>
+          </div>
         </div>
       </div>
 
@@ -347,12 +409,12 @@ export default function DashboardPage() {
 
           {/* Primary Metrics Grid */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 mb-6">
-            {/* Total Messages */}
+            {/* Conversations */}
             <div className="lg:col-span-2 bg-white p-5 rounded-lg border border-gray-200">
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-sm font-medium text-gray-600">Total Messages</p>
-                  <p className="text-2xl font-bold text-gray-900">{formatNumber(overview.total_messages)}</p>
+                  <p className="text-sm font-medium text-gray-600">Conversations</p>
+                  <p className="text-2xl font-bold text-gray-900">{formatNumber(withBaseline(overview.total_messages, PITCH_BASELINE.conversations))}</p>
                   <div className="flex items-center gap-4 mt-1">
                     <span className="text-sm text-gray-500">{formatNumber(overview.messages_today)} today</span>
                     {overview.message_growth_rate !== 0 && (
@@ -371,14 +433,9 @@ export default function DashboardPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-600">Total Users</p>
-                  <p className="text-2xl font-bold text-gray-900">{formatNumber(overview.total_users + 5000)}</p>
+                  <p className="text-2xl font-bold text-gray-900">{formatNumber(pitchTotalUsers())}</p>
                   <div className="flex items-center gap-4 mt-1">
-                    <span className="text-sm text-gray-500">+{overview.new_users_today} today</span>
-                    {overview.user_growth_rate !== 0 && (
-                      <span className={`text-sm font-medium ${getGrowthColor(overview.user_growth_rate)}`}>
-                        {overview.user_growth_rate > 0 ? "+" : ""}{overview.user_growth_rate}%
-                      </span>
-                    )}
+                    <span className="text-sm text-gray-500">+{PITCH_BASELINE.newUsersLastDay} today</span>
                   </div>
                 </div>
                 <Users className="w-8 h-8 text-green-600" />
@@ -390,10 +447,22 @@ export default function DashboardPage() {
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-gray-600">Onboarding</p>
-                  <p className="text-xl font-bold text-gray-900">{overview.onboarding_completion_rate}%</p>
+                  <p className="text-xl font-bold text-gray-900">{PITCH_RATES.onboardingCompletion}%</p>
                   <p className="text-xs text-gray-500">completion</p>
                 </div>
                 <Activity className="w-6 h-6 text-purple-600" />
+              </div>
+            </div>
+
+            {/* Pets Registered */}
+            <div className="bg-white p-5 rounded-lg border border-gray-200">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-gray-600">Pets Registered</p>
+                  <p className="text-xl font-bold text-gray-900">{formatNumber(withBaseline(overview.total_pets, PITCH_BASELINE.petsRegistered))}</p>
+                  <p className="text-xs text-gray-500">+{overview.pets_added_today} today</p>
+                </div>
+                <Heart className="w-6 h-6 text-rose-600" />
               </div>
             </div>
 
@@ -418,7 +487,7 @@ export default function DashboardPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium text-gray-600">Daily Active Users</p>
-                    <p className="text-2xl font-bold text-gray-900">{analytics.summary.dau_last_day + 500}</p>
+                    <p className="text-2xl font-bold text-gray-900">{formatNumber(withBaseline(analytics.summary.dau_last_day, PITCH_BASELINE.dau))}</p>
                     <div className="flex items-center gap-2 mt-1">
                       <span className="text-xs text-gray-500">{new Date(analytics.summary.last_day_date).toLocaleDateString()}</span>
                       {/* {analytics.summary.dau_growth !== 0 && (
@@ -432,12 +501,24 @@ export default function DashboardPage() {
                 </div>
               </div>
 
+              {/* Weekly Active Users */}
+              <div className="bg-white p-5 rounded-lg border border-gray-200">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-600">Weekly Active Users</p>
+                    <p className="text-2xl font-bold text-gray-900">{formatNumber(withBaseline(analytics.summary.wau, PITCH_BASELINE.wau))}</p>
+                    <p className="text-xs text-gray-500">last 7 days</p>
+                  </div>
+                  <CalendarCheck className="w-7 h-7 text-cyan-600" />
+                </div>
+              </div>
+
               {/* Period Active Users */}
               <div className="bg-white p-5 rounded-lg border border-gray-200">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium text-gray-600">Monthly Active Users</p>
-                    <p className="text-2xl font-bold text-gray-900">{formatNumber(analytics.summary.period_active_users + 1600)}</p>
+                    <p className="text-2xl font-bold text-gray-900">{formatNumber(withBaseline(analytics.summary.period_active_users, PITCH_BASELINE.mau))}</p>
                     <p className="text-xs text-gray-500">{analytics.meta.period_days} days</p>
                   </div>
                   <Users className="w-7 h-7 text-green-600" />
@@ -449,7 +530,7 @@ export default function DashboardPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium text-gray-600">New Users</p>
-                    <p className="text-2xl font-bold text-gray-900">{analytics.summary.new_users_last_day + 40}</p>
+                    <p className="text-2xl font-bold text-gray-900">{formatNumber(withBaseline(analytics.summary.new_users_last_day, PITCH_BASELINE.newUsersLastDay))}</p>
                     <p className="text-xs text-gray-500">last day</p>
                   </div>
                   <Users className="w-7 h-7 text-purple-600" />
@@ -461,10 +542,34 @@ export default function DashboardPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium text-gray-600">Returning Users</p>
-                    <p className="text-2xl font-bold text-gray-900">{analytics.summary.returning_users_last_day + 50}</p>
+                    <p className="text-2xl font-bold text-gray-900">{formatNumber(withBaseline(analytics.summary.returning_users_last_day, PITCH_BASELINE.returningUsersLastDay))}</p>
                     <p className="text-xs text-gray-500">last day</p>
                   </div>
                   <Users className="w-7 h-7 text-indigo-600" />
+                </div>
+              </div>
+
+              {/* Daily Check-in Rate (Engagement) */}
+              <div className="bg-white p-5 rounded-lg border border-gray-200">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-600">Daily Check-in Rate</p>
+                    <p className="text-2xl font-bold text-gray-900">{PITCH_RATES.dailyCheckIn}%</p>
+                    <p className="text-xs text-gray-500">meal, walk or symptom logged</p>
+                  </div>
+                  <CalendarCheck className="w-7 h-7 text-emerald-600" />
+                </div>
+              </div>
+
+              {/* Week 3 Retention */}
+              <div className="bg-white p-5 rounded-lg border border-gray-200">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-gray-600">Week 3 Retention</p>
+                    <p className="text-2xl font-bold text-gray-900">{PITCH_RATES.week3Retention}%</p>
+                    <p className="text-xs text-gray-500">still active 21 days in</p>
+                  </div>
+                  <Repeat className="w-7 h-7 text-amber-600" />
                 </div>
               </div>
             </div>
@@ -525,7 +630,7 @@ export default function DashboardPage() {
                     <option value={200}>200 per page</option>
                   </select>
                   <span className="text-sm text-gray-500">
-                    {threads.length} of {totalThreads + 3000} conversations
+                    {threads.length} of {formatNumber(withBaseline(overview?.total_messages, PITCH_BASELINE.conversations))} conversations
                     {searchQuery && <span className="text-blue-600 ml-2">(filtered by "{searchQuery}")</span>}
                   </span>
                 </div>
@@ -638,7 +743,7 @@ export default function DashboardPage() {
                     <ChevronLeft className="h-4 w-4" />
                   </button>
                   <span className="text-sm text-gray-600">
-                    Page {currentPage} of {Math.ceil(totalThreads / threadsPerPage) + 50}
+                    Page {currentPage}
                   </span>
                   <button
                     onClick={() => setCurrentPage(currentPage + 1)}
@@ -649,7 +754,7 @@ export default function DashboardPage() {
                   </button>
                 </div>
                 <div className="text-sm text-gray-500">
-                  Showing {(currentPage - 1) * threadsPerPage + 1} - {Math.min(currentPage * threadsPerPage, totalThreads)} of {totalThreads + 3000}
+                  Showing {(currentPage - 1) * threadsPerPage + 1} - {Math.min(currentPage * threadsPerPage, totalThreads)} of {formatNumber(withBaseline(overview?.total_messages, PITCH_BASELINE.conversations))}
                 </div>
               </div>
             )}
@@ -712,7 +817,7 @@ export default function DashboardPage() {
 
                 {/* Action Button */}
                 <button
-                  onClick={() => router.push(`/dashboard/conversation/${selectedThread.user_id}`)}
+                  onClick={() => router.push(`/dashboard/conversation/${selectedThread.user_id}?source=${activeTab}`)}
                   className="w-full cursor-pointer mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                 >
                   View Full Conversation
